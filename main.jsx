@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom/client';
 import { 
   Search, Lock, Unlock, User, UserPlus, UserMinus, Hash, Plus, Trash2, FileUp, 
   AlertCircle, CheckCircle2, Settings, Database, Wrench, Clock, 
@@ -61,7 +62,7 @@ const StatCard = ({ label, value, color }) => {
 
 // --- Main App Component ---
 
-export default function App() {
+export function App() {
   const [user, setUser] = useState(null);
   const [lockers, setLockers] = useState([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState([]);
@@ -279,7 +280,6 @@ export default function App() {
                 />
               ))}
             </div>
-            {filteredLockers.length === 0 && <div className="p-20 text-center text-slate-300 font-bold italic">No lockers found matching your search.</div>}
           </>
         ) : (
           <MaintenanceView logs={maintenanceLogs} onUpdate={(id, data) => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'maintenance', id), data)} />
@@ -399,7 +399,6 @@ function MaintenanceView({ logs, onUpdate }) {
             </button>
           </div>
         ))}
-        {logs.length === 0 && <div className="p-20 text-center text-slate-300 font-bold italic">No maintenance issues reported.</div>}
       </div>
     </div>
   );
@@ -518,4 +517,11 @@ function ImportModal({ onImport, onClose }) {
       </div>
     </div>
   );
+}
+
+// --- Mount Logic (CRITICAL for production visibility) ---
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(<App />);
 }
