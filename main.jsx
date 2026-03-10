@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { 
   Search, Lock, Unlock, User, UserPlus, UserMinus, Hash, Plus, Trash2, FileUp, 
   AlertCircle, CheckCircle2, Settings, Database, Wrench, Clock, 
-  CheckCircle, AlertTriangle, History, X, MapPin, Layers, ChevronDown
+  CheckCircle, AlertTriangle, History, X, MapPin, Layers, ChevronDown, Loader2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -53,7 +53,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [lockers, setLockers] = useState([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState([]);
-  const [activeSet, setActiveSet] = useState(1); 
+  const [activeSet, setActiveSet] = useState(4); // CHANGED: Defaulted to Set 4
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState('inventory');
   
@@ -61,6 +61,7 @@ export default function App() {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // New loading state
   
   const [editingLocker, setEditingLocker] = useState(null);
   const [activeLockerForLog, setActiveLockerForLog] = useState(null);
@@ -86,13 +87,12 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    // Correct 6-segment path for settings document
     const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global');
     const lockersRef = collection(db, 'artifacts', appId, 'public', 'data', 'lockers');
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'maintenance');
 
     const unsubSettings = onSnapshot(settingsRef, (docSnap) => {
-      if (docSnap.exists()) setActiveSet(docSnap.data().activeSet || 1);
+      if (docSnap.exists()) setActiveSet(docSnap.data().activeSet || 4); // Default to 4
     });
 
     const unsubLockers = onSnapshot(query(lockersRef), (snapshot) => {
@@ -112,18 +112,18 @@ export default function App() {
   };
 
   const updateGlobalComboSet = async (newSet) => {
-    if (!user) return notify("Connecting to database...", "error");
+    if (!user) return notify("Connecting...", "error");
     try {
       const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global');
       await setDoc(settingsRef, { activeSet: newSet, updatedAt: new Date().toISOString() }, { merge: true });
       notify(`Global Combination Set: ${newSet}`);
-    } catch (e) { notify("Update failed. Check database permissions.", "error"); }
+    } catch (e) { notify("Update failed.", "error"); }
   };
 
-  const handleCSVImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!user) return notify("Please wait for the app to connect...", "error");
+  // Improved CSV Import with explicit button and progress
+  const processCSV = async (file) => {
+    if (!file || !user) return;
+    setIsUploading(true);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -150,10 +150,12 @@ export default function App() {
           }
         }
         notify(`Successfully imported ${count} lockers!`);
+        setIsUploading(false);
         setImportModalOpen(false);
       } catch (err) {
         console.error(err);
-        notify("Import failed. Check CSV format.", "error");
+        setIsUploading(false);
+        notify("Import failed. Check format.", "error");
       }
     };
     reader.readAsText(file);
@@ -181,9 +183,9 @@ export default function App() {
         </div>
         <div className="flex items-center gap-2">
           <div className="hidden lg:flex gap-1 border-r pr-4 border-slate-200 mr-2 items-center">
-             <span className="text-[10px] font-black text-slate-400 mr-2">SET:</span>
+             <span className="text-[10px] font-black text-slate-400 mr-2 tracking-widest">SET:</span>
             {[1,2,3,4,5].map(n => (
-              <button key={n} onClick={() => updateGlobalComboSet(n)} className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${activeSet === n ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{n}</button>
+              <button key={n} onClick={() => updateGlobalComboSet(n)} className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${activeSet === n ? 'bg-blue-600 text-white shadow-md scale-110' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{n}</button>
             ))}
           </div>
           <button onClick={() => setImportModalOpen(true)} className="p-2 text-slate-400 border rounded-xl hover:bg-slate-50 transition-colors"><FileUp size={18}/></button>
@@ -193,10 +195,10 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto p-4 md:p-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Lockers" value={lockers.length} />
+          <StatCard label="Total Lockers" value={lockers.length} />
           <StatCard label="Assigned" value={lockers.filter(l => l.studentName).length} />
-          <StatCard label="Open Issues" value={maintenanceLogs.filter(l => l.status === 'pending').length} />
-          <StatCard label="Combo Set" value={`#${activeSet}`} />
+          <StatCard label="Empty" value={lockers.filter(l => !l.studentName).length} />
+          <StatCard label="Active Codes" value={`Set ${activeSet}`} />
         </div>
 
         <div className="relative mb-10">
@@ -243,9 +245,30 @@ export default function App() {
           <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl">
             <div className="bg-blue-50 w-16 h-16 rounded-3xl flex items-center justify-center text-blue-600 mx-auto mb-6"><FileUp size={30}/></div>
             <h2 className="text-2xl font-black mb-2 tracking-tighter">Bulk Import</h2>
-            <p className="text-slate-400 text-sm mb-8 font-medium">Please ensure your CSV has 8 columns: <br/><span className="text-slate-600 font-bold">Number, Student, Set1, Set2, Set3, Set4, Set5, Location</span></p>
-            <input type="file" accept=".csv" onChange={handleCSVImport} className="block w-full text-xs text-slate-500 mb-8 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"/>
-            <button onClick={() => setImportModalOpen(false)} className="text-slate-300 font-black text-[10px] uppercase tracking-[0.2em] hover:text-slate-500">Close Window</button>
+            <p className="text-slate-400 text-sm mb-8 font-medium italic">Requirement: CSV with 8 columns (Number, Name, Set1, Set2, Set3, Set4, Set5, Location)</p>
+            
+            <div className="space-y-4">
+              <input 
+                id="csv-file"
+                type="file" 
+                accept=".csv" 
+                className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+              />
+              
+              <button 
+                onClick={() => {
+                  const file = document.getElementById('csv-file').files[0];
+                  if (file) processCSV(file);
+                  else notify("Please select a file first", "error");
+                }}
+                disabled={isUploading}
+                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isUploading ? <><Loader2 className="animate-spin w-4 h-4"/> Processing...</> : "Start Upload"}
+              </button>
+            </div>
+
+            <button onClick={() => setImportModalOpen(false)} className="mt-8 text-slate-300 font-black text-[10px] uppercase tracking-[0.2em] hover:text-slate-500">Close Window</button>
           </div>
         </div>
       )}
