@@ -53,7 +53,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [lockers, setLockers] = useState([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState([]);
-  const [activeSet, setActiveSet] = useState(4); // CHANGED: Defaulted to Set 4
+  const [activeSet, setActiveSet] = useState(4); // Defaulted to Set 4
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState('inventory');
   
@@ -61,7 +61,7 @@ export default function App() {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false); // New loading state
+  const [isUploading, setIsUploading] = useState(false);
   
   const [editingLocker, setEditingLocker] = useState(null);
   const [activeLockerForLog, setActiveLockerForLog] = useState(null);
@@ -92,7 +92,7 @@ export default function App() {
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'maintenance');
 
     const unsubSettings = onSnapshot(settingsRef, (docSnap) => {
-      if (docSnap.exists()) setActiveSet(docSnap.data().activeSet || 4); // Default to 4
+      if (docSnap.exists()) setActiveSet(docSnap.data().activeSet || 4);
     });
 
     const unsubLockers = onSnapshot(query(lockersRef), (snapshot) => {
@@ -120,7 +120,7 @@ export default function App() {
     } catch (e) { notify("Update failed.", "error"); }
   };
 
-  // Improved CSV Import with explicit button and progress
+  // Resilient CSV Import
   const processCSV = async (file) => {
     if (!file || !user) return;
     setIsUploading(true);
@@ -129,12 +129,14 @@ export default function App() {
     reader.onload = async (event) => {
       try {
         const text = event.target.result;
-        const rows = text.split('\n').filter(r => r.trim() !== '').slice(1);
+        const rows = text.split(/\r?\n/).filter(r => r.trim() !== '').slice(1);
         let count = 0;
 
         for (const row of rows) {
+          // Robust comma splitting (handles some basic quoting if necessary)
           const p = row.split(',').map(s => s?.trim());
-          if (p[0]) {
+          
+          if (p[0]) { // Requires at least a Locker Number
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'lockers'), {
               lockerNumber: p[0], 
               studentName: p[1] || "", 
@@ -143,7 +145,7 @@ export default function App() {
               combination3: p[4] || "00-00-00", 
               combination4: p[5] || "00-00-00", 
               combination5: p[6] || "00-00-00", 
-              location: p[7] || "", 
+              location: p[7] || "Main Hallway", 
               lastModified: new Date().toISOString()
             });
             count++;
@@ -153,9 +155,9 @@ export default function App() {
         setIsUploading(false);
         setImportModalOpen(false);
       } catch (err) {
-        console.error(err);
+        console.error("CSV Import Error:", err);
         setIsUploading(false);
-        notify("Import failed. Check format.", "error");
+        notify("Import failed. Check CSV file formatting.", "error");
       }
     };
     reader.readAsText(file);
@@ -188,7 +190,7 @@ export default function App() {
               <button key={n} onClick={() => updateGlobalComboSet(n)} className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${activeSet === n ? 'bg-blue-600 text-white shadow-md scale-110' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{n}</button>
             ))}
           </div>
-          <button onClick={() => setImportModalOpen(true)} className="p-2 text-slate-400 border rounded-xl hover:bg-slate-50 transition-colors"><FileUp size={18}/></button>
+          <button onClick={() => setImportModalOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200"><FileUp size={18}/></button>
           <button onClick={() => {setEditingLocker(null); setIsModalOpen(true);}} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-blue-100">+ NEW</button>
         </div>
       </header>
@@ -208,7 +210,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredLockers.map(l => (
-            <div key={l.id} className={`bg-white border rounded-[2rem] p-6 group relative shadow-sm transition-all hover:shadow-md ${l.studentName ? 'border-blue-100 bg-blue-50/10' : 'border-slate-200'}`}>
+            <div key={l.id} className={`bg-white border rounded-[2rem] p-6 group relative shadow-sm transition-all hover:shadow-md ${l.studentName ? 'border-blue-100 bg-blue-50/20' : 'border-slate-200'}`}>
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <div className="text-2xl font-black font-mono tracking-tighter">#{l.lockerNumber}</div>
@@ -245,11 +247,11 @@ export default function App() {
           <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl">
             <div className="bg-blue-50 w-16 h-16 rounded-3xl flex items-center justify-center text-blue-600 mx-auto mb-6"><FileUp size={30}/></div>
             <h2 className="text-2xl font-black mb-2 tracking-tighter">Bulk Import</h2>
-            <p className="text-slate-400 text-sm mb-8 font-medium italic">Requirement: CSV with 8 columns (Number, Name, Set1, Set2, Set3, Set4, Set5, Location)</p>
+            <p className="text-slate-400 text-sm mb-8 font-medium">CSV Columns: Number, Student, Set 1, Set 2, Set 3, Set 4, Set 5, Location</p>
             
             <div className="space-y-4">
               <input 
-                id="csv-file"
+                id="csv-file-input"
                 type="file" 
                 accept=".csv" 
                 className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
@@ -257,9 +259,9 @@ export default function App() {
               
               <button 
                 onClick={() => {
-                  const file = document.getElementById('csv-file').files[0];
+                  const file = document.getElementById('csv-file-input').files[0];
                   if (file) processCSV(file);
-                  else notify("Please select a file first", "error");
+                  else notify("Select a file first", "error");
                 }}
                 disabled={isUploading}
                 className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
@@ -283,7 +285,7 @@ export default function App() {
             setIsAssignModalOpen(false);
           }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl text-center">
             <h2 className="text-2xl font-black mb-2 tracking-tighter text-blue-600">Assign Locker #{activeLockerForAssign?.lockerNumber}</h2>
-            <p className="text-slate-400 font-medium mb-8">Enter the full name of the student.</p>
+            <p className="text-slate-400 font-medium mb-8">Enter student's full name.</p>
             <input name="studentName" required autoFocus placeholder="Student Name" className="w-full p-5 bg-slate-50 rounded-2xl outline-none border-2 border-transparent focus:border-blue-100 mb-8 text-center text-xl font-black" />
             <div className="flex gap-3">
                <button type="button" onClick={() => setIsAssignModalOpen(false)} className="flex-1 py-4 text-slate-300 font-black text-xs uppercase tracking-widest">Cancel</button>
