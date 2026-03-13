@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createRoot } from 'react-dom/client';
 import { 
   Search, User, UserPlus, UserMinus, Trash2, FileUp, 
   CheckCircle, MapPin, ChevronDown, Loader2, Ban,
@@ -234,16 +233,20 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {filteredLockers.map(l => (
+            {filteredLockers.map(l => {
+              const hr = l.studentHomeroom || students.find(s => s.name === l.studentName)?.homeroom;
+              return (
               <tr key={l.id} className="border-b border-slate-200 hover:bg-slate-50">
                 <td className="p-4 font-mono font-black text-xl text-slate-900">#{l.lockerNumber}</td>
                 <td className={`p-4 font-bold text-lg ${!l.studentName ? 'text-slate-300 italic' : 'text-slate-800'}`}>
                   {l.studentName || "UNASSIGNED"}
+                  {l.studentName && hr && <span className="block text-xs text-slate-500 font-normal mt-1">HR: {hr}</span>}
                 </td>
                 <td className="p-4 text-xs text-slate-500 font-black uppercase tracking-widest">{l.location}</td>
                 <td className="p-4 font-mono font-black text-blue-600">{l[`combination${activeSet}`] || "0-0-0"}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -298,6 +301,7 @@ export default function App() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
               {filteredLockers.map(l => {
                 const isUnusable = maintenanceLogs.some(log => log.lockerId === l.id && log.status === 'pending');
+                const hr = l.studentHomeroom || students.find(s => s.name === l.studentName)?.homeroom;
                 return (
                   <div key={l.id} className={`bg-white border rounded-[2rem] p-6 group relative shadow-sm transition-all hover:shadow-md ${isUnusable ? 'border-rose-200 bg-rose-50/20' : l.studentName ? 'border-blue-100 bg-blue-50/10' : 'border-slate-200'}`}>
                     <div className="flex justify-between items-start mb-4">
@@ -316,11 +320,18 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between mb-5">
-                      <div className={`truncate font-bold text-sm ${l.studentName ? 'text-slate-900' : 'text-slate-300 italic'}`}>{l.studentName || "Available"}</div>
+                      <div className="flex flex-col overflow-hidden pr-2">
+                        <div className={`truncate font-bold text-sm ${l.studentName ? 'text-slate-900' : 'text-slate-300 italic'}`}>{l.studentName || "Available"}</div>
+                        {l.studentName && hr && (
+                          <div className="text-[10px] text-slate-500 truncate mt-0.5 font-medium">
+                            HR: {hr}
+                          </div>
+                        )}
+                      </div>
                       {!isUnusable && (
                         l.studentName ? 
-                        <button onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lockers', l.id), {studentName: ""})} className="text-slate-200 hover:text-red-500 transition-colors"><UserMinus size={20}/></button> :
-                        <button onClick={() => {setActiveLockerForAssign(l); setIsAssignModalOpen(true);}} className="text-emerald-400 hover:text-emerald-600 transition-colors"><UserPlus size={20}/></button>
+                        <button onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lockers', l.id), {studentName: "", studentHomeroom: ""})} className="text-slate-200 hover:text-red-500 transition-colors shrink-0"><UserMinus size={20}/></button> :
+                        <button onClick={() => {setActiveLockerForAssign(l); setIsAssignModalOpen(true);}} className="text-emerald-400 hover:text-emerald-600 transition-colors shrink-0"><UserPlus size={20}/></button>
                       )}
                     </div>
                     <div className="bg-slate-50 rounded-2xl p-4 flex justify-between items-center border border-slate-100 shadow-inner">
@@ -506,12 +517,14 @@ export default function App() {
            <form onSubmit={async (e) => {
              e.preventDefault();
              const name = new FormData(e.target).get('studentName');
-             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lockers', activeLockerForAssign.id), { studentName: name });
+             const homeroom = new FormData(e.target).get('homeroom');
+             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lockers', activeLockerForAssign.id), { studentName: name, studentHomeroom: homeroom });
              setIsAssignModalOpen(false);
              notify(`Assigned to ${name}`);
            }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl text-center animate-in zoom-in duration-200 border border-slate-100">
               <h2 className="text-3xl font-black mb-8 tracking-tighter text-slate-800 uppercase text-center">Assign #{activeLockerForAssign?.lockerNumber}</h2>
-              <input name="studentName" required autoFocus className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-xl font-black text-center mb-8 outline-none focus:border-blue-300 transition-all shadow-inner placeholder:text-slate-200" placeholder="Full Student Name" />
+              <input name="studentName" required autoFocus className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-xl font-black text-center mb-4 outline-none focus:border-blue-300 transition-all shadow-inner placeholder:text-slate-200" placeholder="Full Student Name" />
+              <input name="homeroom" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-bold text-center mb-8 outline-none focus:border-blue-300 transition-all shadow-inner placeholder:text-slate-300" placeholder="Homeroom (Optional)" />
               <div className="flex gap-3 text-center items-center justify-center">
                 <button type="button" onClick={() => setIsAssignModalOpen(false)} className="flex-1 py-4 text-slate-300 font-black text-xs uppercase tracking-widest hover:text-slate-500 transition-colors">Cancel</button>
                 <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-200 active:scale-95 transition-transform hover:bg-blue-700">Confirm</button>
@@ -561,7 +574,7 @@ export default function App() {
                  {viewingLocker.studentName && (
                    <p className="text-sm font-bold text-slate-500 mt-2 flex items-center gap-2">
                      <BookOpen size={16} className="text-blue-500" /> 
-                     Homeroom: {students.find(s => s.name === viewingLocker.studentName)?.homeroom || "Not in Directory"}
+                     Homeroom: {viewingLocker.studentHomeroom || students.find(s => s.name === viewingLocker.studentName)?.homeroom || "Not in Directory"}
                    </p>
                  )}
                </div>
@@ -593,13 +606,4 @@ export default function App() {
       )}
     </div>
   );
-}
-
-// --- Bulletproof Mounting Logic ---
-if (typeof document !== 'undefined') {
-  const rootElement = document.getElementById('root');
-  if (rootElement) {
-    const root = createRoot(rootElement);
-    root.render(<App />);
-  }
 }
