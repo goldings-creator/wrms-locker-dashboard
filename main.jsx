@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { 
   Search, User, UserPlus, UserMinus, Trash2, FileUp, 
   CheckCircle, MapPin, ChevronDown, Loader2, Ban,
-  Printer, BookOpen, Upload
+  Printer, BookOpen, Upload, X, Info
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -61,6 +61,7 @@ export default function App() {
   const [activeLockerForAssign, setActiveLockerForAssign] = useState(null);
   const [activeLockerForStatus, setActiveLockerForStatus] = useState(null);
   const [viewingCombination, setViewingCombination] = useState(null);
+  const [viewingLocker, setViewingLocker] = useState(null);
   const [notification, setNotification] = useState(null);
 
   // THE FAILSAFE: Drops the loading screen after 1.5 seconds NO MATTER WHAT.
@@ -302,7 +303,9 @@ export default function App() {
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <div className="flex items-center gap-2 text-left">
-                          <span className="text-2xl font-black font-mono tracking-tighter">#{l.lockerNumber}</span>
+                          <button onClick={() => setViewingLocker(l)} className="text-2xl font-black font-mono tracking-tighter hover:text-blue-600 transition-colors flex items-center gap-2 group/btn" title="View Locker Details">
+                            #{l.lockerNumber} <Info size={16} className="text-slate-300 group-hover/btn:text-blue-500 transition-colors" />
+                          </button>
                           {isUnusable && <span className="bg-rose-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest shadow-sm animate-pulse">Broken</span>}
                         </div>
                         <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mt-1 tracking-widest text-left"><MapPin size={10}/> {l.location || "Hall"}</div>
@@ -537,6 +540,49 @@ export default function App() {
                  <button type="submit" className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95 transition-transform hover:bg-rose-700 text-center">Submit</button>
               </div>
            </form>
+        </div>
+      )}
+
+      {/* Locker Details Modal */}
+      {viewingLocker && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-in zoom-in duration-200">
+          <div className="bg-white p-8 md:p-10 rounded-[3rem] w-full max-w-md shadow-2xl relative text-center border border-slate-100">
+            <button onClick={() => setViewingLocker(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 transition-colors p-3 bg-slate-50 hover:bg-slate-100 rounded-full">
+              <X size={20} />
+            </button>
+            
+            <h2 className="text-5xl font-black tracking-tighter text-slate-800 mt-2">#{viewingLocker.lockerNumber}</h2>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1 mt-3 mb-8"><MapPin size={14}/> {viewingLocker.location || "Main Hall"}</p>
+
+            <div className="space-y-4 text-left">
+               <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 shadow-inner">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Assigned Student</span>
+                 <p className="text-2xl font-black text-slate-800">{viewingLocker.studentName || "Unassigned"}</p>
+                 {viewingLocker.studentName && (
+                   <p className="text-sm font-bold text-slate-500 mt-2 flex items-center gap-2">
+                     <BookOpen size={16} className="text-blue-500" /> 
+                     Homeroom: {students.find(s => s.name === viewingLocker.studentName)?.homeroom || "Not in Directory"}
+                   </p>
+                 )}
+               </div>
+
+               <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 shadow-sm">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-2 block">Active Combination (Set {activeSet})</span>
+                 <p className="text-4xl font-mono font-black text-blue-700 tracking-[0.15em] text-center mt-2">{viewingLocker[`combination${activeSet}`] || "0-0-0"}</p>
+                 
+                 <div className="grid grid-cols-5 gap-2 mt-6">
+                    {[1,2,3,4,5].map(n => (
+                      <div key={n} className={`text-center py-2 rounded-xl border ${activeSet === n ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-blue-100 text-blue-400'}`}>
+                        <div className="text-[8px] font-black uppercase tracking-widest opacity-80 mb-1">Set {n}</div>
+                        <div className={`font-mono text-[9px] font-bold ${activeSet === n ? 'text-white' : 'text-blue-600'}`}>{viewingLocker[`combination${n}`] || "0-0-0"}</div>
+                      </div>
+                    ))}
+                  </div>
+               </div>
+            </div>
+            
+            <button onClick={() => setViewingLocker(null)} className="w-full mt-8 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 hover:text-slate-700 transition-colors active:scale-95">Close Details</button>
+          </div>
         </div>
       )}
 
