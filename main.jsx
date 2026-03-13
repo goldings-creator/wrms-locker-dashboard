@@ -546,13 +546,5 @@ export default function App() {
       )}
     </div>
   );
-}
+} border border-slate-100">
 
-// --- Mount Command ---
-// Ensures standard rendering locally or in standard bundlers
-export const renderApp = () => {
-    const el = document.getElementById('root')
-    if (el) {
-        createRoot(el).render(<App />)
-    }
-}
