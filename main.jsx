@@ -33,7 +33,6 @@ const StatCard = ({ label, value, color }) => (
 
 // --- Main App Component ---
 export default function App() {
-  // Safely scoped inside the component to prevent ReferenceErrors
   const appId = 'wrms-locker-system';
   const LOCATIONS = ["All Locations", "2nd Floor", "Lower Level", "Main Hall", "Science Wing"];
 
