@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, User, UserPlus, UserMinus, Trash2, FileUp, 
   CheckCircle, MapPin, ChevronDown, Loader2, Ban,
-  Printer, BookOpen, Upload, X, Info
+  Download, BookOpen, Upload, X, Info
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -24,7 +24,7 @@ const db = getFirestore(app);
 
 // --- UI Components ---
 const StatCard = ({ label, value, color }) => (
-  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm transition-all hover:shadow-md print:hidden relative overflow-hidden">
+  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm transition-all hover:shadow-md relative overflow-hidden">
     <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</div>
     <div className="text-2xl font-black text-slate-900 tracking-tight">{value}</div>
     {color && <div className={`absolute bottom-0 left-0 w-full h-1 ${color === 'blue' ? 'bg-blue-500' : color === 'rose' ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>}
@@ -44,8 +44,8 @@ export default function App() {
   const [activeSet, setActiveSet] = useState(4); 
   const [searchTerm, setSearchTerm] = useState('');
   const [locationFilter, setLocationFilter] = useState("All Locations");
-  const [selectedStudentId, setSelectedStudentId] = useState('');
   const [view, setView] = useState('inventory');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -64,10 +64,9 @@ export default function App() {
   const [viewingLocker, setViewingLocker] = useState(null);
   const [notification, setNotification] = useState(null);
 
-  // THE FAILSAFE: Drops the loading screen after 1.5 seconds NO MATTER WHAT.
+  // Authentication Setup with Failsafe Timeout
   useEffect(() => {
     let isMounted = true;
-    
     const safetyTimer = setTimeout(() => {
       if (isMounted) setIsAuthLoading(false);
     }, 1500);
@@ -198,6 +197,47 @@ export default function App() {
       .sort((a, b) => String(a.lockerNumber || "").localeCompare(String(b.lockerNumber || ""), undefined, {numeric: true}));
   }, [lockers, searchTerm, locationFilter]);
 
+  // Build the CSV File and Force Browser Download
+  const downloadCSVReport = () => {
+    try {
+      const headers = ['Locker Number', 'Student Name', 'Homeroom', 'Location', `Combination (Set ${activeSet})`, 'Status'];
+      const csvRows = [headers.join(',')];
+
+      filteredLockers.forEach(l => {
+        const hr = l.studentHomeroom || students.find(s => s.name === l.studentName)?.homeroom || 'N/A';
+        const isBroken = maintenanceLogs.some(log => log.lockerId === l.id && log.status === 'pending');
+        const status = isBroken ? 'BROKEN' : (l.studentName ? 'ASSIGNED' : 'AVAILABLE');
+        
+        const row = [
+          l.lockerNumber || '',
+          l.studentName || 'Unassigned',
+          hr,
+          l.location || '',
+          l[`combination${activeSet}`] || '',
+          status
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`); // Protect against commas inside the text
+        
+        csvRows.push(row.join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `WRMS_Locker_Report_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      notify("Report downloaded successfully!");
+    } catch (e) {
+      console.error("Export Error:", e);
+      notify("Failed to build report.", "error");
+    }
+  };
+
   if (isAuthLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center">
@@ -209,51 +249,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20 print:bg-white print:pb-0">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
       
-      {/* Print View */}
-      <div className="hidden print:block p-10">
-        <div className="flex justify-between items-end border-b-4 border-slate-900 pb-6 mb-10 text-left">
-          <div>
-            <h1 className="text-4xl font-black tracking-tighter uppercase text-slate-900">Assignment Report</h1>
-            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-2">WRMS Middle School • Printed: {new Date().toLocaleString()}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Wing: {locationFilter}</p>
-            <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Set: #{activeSet}</p>
-          </div>
-        </div>
-        
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-slate-100 border-b-2 border-slate-900 text-left text-slate-600">
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest">Locker #</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest">Student Name</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest">Wing / Location</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-blue-600">Active Code</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredLockers.map(l => {
-              const hr = l.studentHomeroom || students.find(s => s.name === l.studentName)?.homeroom;
-              return (
-              <tr key={l.id} className="border-b border-slate-200 hover:bg-slate-50">
-                <td className="p-4 font-mono font-black text-xl text-slate-900">#{l.lockerNumber}</td>
-                <td className={`p-4 font-bold text-lg ${!l.studentName ? 'text-slate-300 italic' : 'text-slate-800'}`}>
-                  {l.studentName || "UNASSIGNED"}
-                  {l.studentName && hr && <span className="block text-xs text-slate-500 font-normal mt-1">HR: {hr}</span>}
-                </td>
-                <td className="p-4 text-xs text-slate-500 font-black uppercase tracking-widest">{l.location}</td>
-                <td className="p-4 font-mono font-black text-blue-600">{l[`combination${activeSet}`] || "0-0-0"}</td>
-              </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
       {/* Main Dashboard UI */}
-      <header className="bg-white border-b sticky top-0 z-40 p-4 shadow-sm flex justify-between items-center print:hidden">
+      <header className="bg-white border-b sticky top-0 z-40 p-4 shadow-sm flex justify-between items-center">
         <div className="flex items-center gap-4">
           <div className="bg-blue-600 p-2 rounded-lg text-white font-black text-xs shadow-md uppercase">WRMS</div>
           <nav className="flex bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
@@ -269,13 +268,17 @@ export default function App() {
               <button key={n} onClick={() => updateGlobalComboSet(n)} className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${activeSet === n ? 'bg-blue-600 text-white shadow-md scale-110' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{n}</button>
             ))}
           </div>
-          <button onClick={() => { setImportType('lockers'); setImportModalOpen(true); }} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200" title="Import Locker CSV"><FileUp size={18}/></button>
-          <button onClick={() => window.print()} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200" title="Print Report"><Printer size={18}/></button>
-          <button onClick={() => {setIsModalOpen(true);}} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-blue-100">+ NEW</button>
+          <button onClick={() => { setImportType('lockers'); setImportModalOpen(true); }} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200" title="Import Locker CSV">
+            <FileUp size={18}/>
+          </button>
+          <button onClick={downloadCSVReport} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200" title="Download Custom CSV Report">
+            <Download size={18}/>
+          </button>
+          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-blue-100">+ NEW</button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-4 md:p-8 print:hidden">
+      <main className="max-w-7xl mx-auto p-4 md:p-8">
         {view === 'inventory' && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
@@ -285,7 +288,7 @@ export default function App() {
               <StatCard label="Active Set" value={`#${activeSet}`} color="blue" />
             </div>
 
-            <div className="flex flex-col md:flex-row gap-4 mb-10">
+            <div className="flex flex-col md:flex-row gap-4 mb-2">
               <div className="relative flex-grow text-left">
                 <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
                 <input type="text" placeholder="Search Locker or Student..." className="w-full pl-14 pr-6 py-5 bg-white border border-slate-200 rounded-[1.5rem] outline-none shadow-sm text-lg font-medium focus:ring-4 focus:ring-blue-50 transition-all placeholder:text-slate-300" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -298,6 +301,9 @@ export default function App() {
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
               </div>
             </div>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest text-right mb-8">
+              * Click the Download button top right to export your current search results to CSV
+            </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
               {filteredLockers.map(l => {
@@ -350,7 +356,7 @@ export default function App() {
         )}
 
         {view === 'students' && (
-          <div className="max-w-4xl mx-auto animate-in fade-in duration-300">
+          <div className="max-w-4xl mx-auto">
             <div className="bg-white rounded-[2.5rem] p-10 shadow-xl border border-slate-200 mb-8 text-center relative overflow-hidden">
               <h2 className="text-3xl font-black mb-1 tracking-tighter text-slate-800 uppercase">Student Directory</h2>
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-10">Look up student info or update school list</p>
@@ -374,7 +380,7 @@ export default function App() {
               </div>
 
               {currentStudentDetails ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in zoom-in duration-200 text-left">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
                   <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 shadow-sm">
                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-2 block">Grade Level</span>
                     <p className="text-2xl font-black text-blue-900">{currentStudentDetails.grade || "N/A"}</p>
@@ -399,7 +405,7 @@ export default function App() {
         )}
 
         {view === 'maintenance' && (
-          <div className="grid gap-4 animate-in fade-in duration-300">
+          <div className="grid gap-4">
              {maintenanceLogs.filter(l => l.status === 'pending').map(log => (
                <div key={log.id} className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
                   <div className="text-left">
@@ -417,10 +423,10 @@ export default function App() {
         )}
       </main>
 
-      {/* CSV Import Modal */}
+      {/* CSV Import Modal (FIXED OVERLAY) */}
       {importModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl border border-slate-100">
+        <div style={{zIndex: 99999}} className="fixed inset-0 bg-slate-900/80 flex items-center justify-center p-4">
+          <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl border border-slate-100 relative">
             <div className="bg-blue-50 w-20 h-20 rounded-3xl flex items-center justify-center text-blue-600 mx-auto mb-6 shadow-inner"><Upload size={40}/></div>
             <h2 className="text-3xl font-black mb-2 tracking-tighter text-slate-800 uppercase">CSV Import</h2>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-8">Importing into: {importType}</p>
@@ -468,7 +474,7 @@ export default function App() {
 
       {/* Manual Entry Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-in zoom-in duration-200">
+        <div style={{zIndex: 99999}} className="fixed inset-0 bg-slate-900/80 flex items-center justify-center p-4">
           <form onSubmit={async (e) => {
             e.preventDefault();
             const f = new FormData(e.target);
@@ -514,7 +520,7 @@ export default function App() {
 
       {/* Assign Student Modal */}
       {isAssignModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+        <div style={{zIndex: 99999}} className="fixed inset-0 bg-slate-900/80 flex items-center justify-center p-4">
            <form onSubmit={async (e) => {
              e.preventDefault();
              const name = new FormData(e.target).get('studentName');
@@ -522,7 +528,7 @@ export default function App() {
              await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lockers', activeLockerForAssign.id), { studentName: name, studentHomeroom: homeroom });
              setIsAssignModalOpen(false);
              notify(`Assigned to ${name}`);
-           }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl text-center animate-in zoom-in duration-200 border border-slate-100">
+           }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl text-center border border-slate-100">
               <h2 className="text-3xl font-black mb-8 tracking-tighter text-slate-800 uppercase text-center">Assign #{activeLockerForAssign?.lockerNumber}</h2>
               <input name="studentName" required autoFocus className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-xl font-black text-center mb-4 outline-none focus:border-blue-300 transition-all shadow-inner placeholder:text-slate-200" placeholder="Full Student Name" />
               <input name="homeroom" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-bold text-center mb-8 outline-none focus:border-blue-300 transition-all shadow-inner placeholder:text-slate-300" placeholder="Homeroom (Optional)" />
@@ -536,7 +542,7 @@ export default function App() {
 
       {/* Mark Broken Modal */}
       {isUnusableModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+        <div style={{zIndex: 99999}} className="fixed inset-0 bg-slate-900/80 flex items-center justify-center p-4">
            <form onSubmit={async (e) => {
              e.preventDefault();
              const issue = new FormData(e.target).get('issue');
@@ -545,7 +551,7 @@ export default function App() {
              });
              setIsUnusableModalOpen(false);
              notify("Report submitted");
-           }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in duration-200 border border-slate-100 text-center">
+           }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl border border-slate-100 text-center">
               <h2 className="text-3xl font-black mb-4 tracking-tighter text-rose-600 uppercase">Mark Broken</h2>
               <p className="text-slate-400 text-sm mb-6 text-center font-medium italic tracking-widest uppercase text-left">Locker #{activeLockerForStatus?.lockerNumber}</p>
               <textarea name="issue" required placeholder="What is wrong with this locker?" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl font-medium min-h-[120px] mb-6 shadow-inner outline-none focus:border-rose-200 transition-all" />
@@ -559,7 +565,7 @@ export default function App() {
 
       {/* Locker Details Modal */}
       {viewingLocker && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-in zoom-in duration-200">
+        <div style={{zIndex: 99999}} className="fixed inset-0 bg-slate-900/80 flex items-center justify-center p-4">
           <div className="bg-white p-8 md:p-10 rounded-[3rem] w-full max-w-md shadow-2xl relative text-center border border-slate-100">
             <button onClick={() => setViewingLocker(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 transition-colors p-3 bg-slate-50 hover:bg-slate-100 rounded-full">
               <X size={20} />
@@ -601,7 +607,7 @@ export default function App() {
       )}
 
       {notification && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl shadow-2xl z-[200] font-black text-xs uppercase tracking-[0.2em] text-white transition-all animate-bounce ${notification.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'}`}>
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl shadow-2xl z-[200] font-black text-xs uppercase tracking-[0.2em] text-white transition-all ${notification.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'}`}>
           {notification.message}
         </div>
       )}
